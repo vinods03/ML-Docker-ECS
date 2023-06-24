@@ -1,0 +1,244 @@
+====================================== BASIC DOCKER COMMANDS =======================================
+
+-- See the list of images on your machine
+sudo docker images
+
+-- See the list of containers on your machine
+sudo docker ps -a
+
+-- Pull an image 
+sudo docker pull hello-world
+
+-- Run container
+sudo docker run hello-world
+
+-- Now See the list of images on your machine
+sudo docker images
+
+-- Now See the list of containers on your machine
+sudo docker ps -a
+
+-- Remove container
+sudo docker rm <container-id>
+
+-- Now See the list of containers on your machine
+sudo docker ps -a
+
+-- Remove image
+sudo docker rmi <image-name>
+
+-- Now See the list of images on your machine
+sudo docker images
+
+=================================== MACHINE LEARNING PROJECT ===================================================
+
+First, we will create a container in our machine (locally) and execute the model app in this container. 
+Next, through docker hub and AWS ECS we will host/run the app for public use.
+
+"Our machine" is AWS EC2 because docker is easily installable on Linux machines rather than Windows machine. 
+Docker is needed to download linux/ubuntu image and run this image as a container.
+Then inside this container, we will run the car price predictor app.
+
+Then, we will build an image with the base ubuntu image + car price predictor app and execute it in AWS ECS.
+
+-----------------
+
+Launch an AWS Ubuntu EC2 instance.
+
+On this instance, make sure correct key pair is attached, SSH is allowed, public IP is enabled and a role that has required access to S3 is attached.
+
+Docker Installation on the EC2 instance: 
+
+sudo apt install curl (install curl)
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -  (Add Docker-Ubuntu's repository key to trusted package sources)
+
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable" (add / download ubuntu image from central docker image repository  to VM ??)
+
+sudo apt update
+
+sudo apt-cache policy docker-ce
+
+sudo apt install docker-ce (actual docker installation)
+
+sudo apt install awscli (we need awscli to copy the predictor python file and model pickle file into the EC2 instance)
+
+aws s3 cp s3://vinod-ml-sagemaker-bucket/car_price/handler.py .
+
+aws s3 cp s3://vinod-ml-sagemaker-bucket/car_price/xgb_gridsearch_regressor.pkl .
+
+aws s3 cp s3://vinod-ml-sagemaker-bucket/car_price/random_forest_regressor.pkl .
+
+sudo docker run -p 5000:5000 -it ubuntu bash (run the ubuntu image downloaded earlier as a container)
+(
+within the AWS EC2 ubuntu instance, we have downloaded a ubuntu image and run a container with ubuntu image. 
+any request from port 5000 of AWS EC2 instance will be re-directed to port 5000 of the container running ubuntu image.
+Because of the keyword bash at the end, after the execution of this command, we will be logged into the container.
+)
+
+-------------------------------------------------------------------------
+
+To verify a ubuntu container is running, OPEN ANOTHER CONNECTION to the EC2 instance and execute below commands. 
+These commands will not work on the existing connection, because that connection is now connected to docker container.
+
+-- See the list of images on your machine
+sudo docker images
+
+-- See the list of containers on your machine
+sudo docker ps -a
+
+sudo docker cp xgb_gridsearch_regressor.pkl d9a356d4878d:xgb_gridsearch_regressor.pkl (d9a356d4878d is the container id from sudo docker ps -a)
+
+sudo docker cp random_forest_regressor.pkl d9a356d4878d:random_forest_regressor.pkl
+
+sudo docker cp handler.py d9a356d4878d:handler.py
+
+-------------------------------------------------------------------------
+
+Execute the below commands within the previous EC2 connection where we are connected to the docker container:
+
+ls (to see if the files copied above are available in the container)
+
+apt-get update (update the packages in the ubuntu container)
+
+apt-get install -y python3-pip (install python in container)
+
+pip3 install scikit-learn (install sklearn in container)
+
+pip3 install flask (install flask in container)
+
+pip3 install xgboost (if using xgb model)
+
+python3 handler.py (this is the python code app that uses the model to predict price - this is the endpoint)
+
+--------------------------------------------------------------------------
+
+For verifying, you can run below code from within the EC2 connection that is NOT CONNECTED to the docker container i.e. EC2 connection that is connected to VM:
+
+python3 (Go to python prompt and then execute below code)
+
+import requests
+
+url = 'http://0.0.0.0:5000/car_price_predict'
+
+r = requests.post(url, json = {
+    "symboling": 2,
+    "normalized-losses": 164,
+    "wheel-base": 99.8,
+    "make": "audi",
+    "fuel-type": "gas",
+    "aspiration": "std",
+    "num-of-doors": "four",
+    "body-style": "sedan",
+    "drive-wheels": "fwd",
+    "engine-location": "front",
+    "length": 176.60,
+    "width": 66.20,
+    "height": 54.30,
+    "curb-weight": 2337,
+    "engine-type": "ohc",
+    "num-of-cylinders": "four",
+    "engine-size": 109, 
+    "fuel-system": "mpfi",
+    "bore": 3.19,
+    "stroke": 3.40,
+    "compression-ratio": 10,
+    "horsepower": 102,
+    "peak-rpm": 5500,
+    "city-mpg": 24,
+    "highway-mpg": 30
+})
+
+print(r.text)
+
+--------------------------------------------------------------------------------------------------
+
+So far, we have deployed our machine learning app in a container on our own machine. You can give the localhost-port of the app and get the predictions
+Next we want to make the app publicly usable. The next 2 sections BUILD IMAGE and AWS ECS are related to this aspect of model hosting.
+
+------------------------------------------- BUILD IMAGE -------------------------------------------
+
+Upload Dockerfile into s3://vinod-ml-sagemaker-bucket
+
+Go to the EC2 connection OUTSIDE the container i.e. on the VM
+
+aws s3 cp s3://vinod-ml-sagemaker-bucket/car_price/Dockerfile .
+
+sudo docker build -t car_price_predictor_app .
+
+Now, if you run the command sudo docker images, apart from the base ubuntu image which we built and executed sometime ago, the car_price_predictor_app will also be listed.
+
+Next step is to push this image to the docker hub.
+
+sudo docker login (provide username and password)
+
+sudo docker tag car_price_predictor_app vinods03/car_price_predictor_app
+
+sudo docker push vinods03/car_price_predictor_app -> this is where the push to ddocker hub happens.
+
+In hub.docker.com -> search for vinods03/car_price_predictor_app and you should find it there.
+
+
+============== pull the image from docker hub into AWS ECS so that your app is available on a public IP for public consumption =======================
+
+Create a Cluster (provide name, vpc, subnets for the cluster. others can be default)
+
+Create a Task and associate it with one or more containers - one container for this use case. 
+This container has the docker hub image path (vinods03/car_price_predictor_app).
+Make sure port 5000 of the container is added in the Port Mappings.
+A port mapping allows a container to access ports on the host to send or receive traffic. 
+For example, for a web application you may want to specify port 80 and the TCP protocol which is commonly used to serve content to HTTP clients such as a web browser.
+We are leaving the App environment as the default value AWS FARGATE (serverless). Other option could be EC2.
+
+Once the task is created, you can deploy the task as a service on a cluster.
+Provide a name for service and used the compute option -> Launch Type.
+Make sure the security group associated with the service allows traffic on the required port (5000 in our case here)
+
+Now, go to the Cluster -> Tasks tab, click on the Task and get the Public IP. That needs to be copied into the url below.
+
+For verifying, you can run below code from within the EC2 connection that is NOT CONNECTED to the docker container i.e. EC2 connection that is connected to VM:
+
+python3 (Go to python prompt and then execute below code)
+
+import requests
+
+url = 'http://3.95.24.86:5000/car_price_predict'
+
+r = requests.post(url, json = {
+    "symboling": 2,
+    "normalized-losses": 164,
+    "wheel-base": 99.8,
+    "make": "audi",
+    "fuel-type": "gas",
+    "aspiration": "std",
+    "num-of-doors": "four",
+    "body-style": "sedan",
+    "drive-wheels": "fwd",
+    "engine-location": "front",
+    "length": 176.60,
+    "width": 66.20,
+    "height": 54.30,
+    "curb-weight": 2337,
+    "engine-type": "ohc",
+    "num-of-cylinders": "four",
+    "engine-size": 109, 
+    "fuel-system": "mpfi",
+    "bore": 3.19,
+    "stroke": 3.40,
+    "compression-ratio": 10,
+    "horsepower": 102,
+    "peak-rpm": 5500,
+    "city-mpg": 24,
+    "highway-mpg": 30
+})
+
+print(r.text)
+
+
+Note: If the security group associated with the service does not allow traffic on port 5000, we will get the connection timeout error when we execute the above request.
+
+Note: When deleting the cluster, first de-register task, then delete service, then delete cluster.
+
+
+
+
