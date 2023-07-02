@@ -7,6 +7,6 @@ We have pickled the 2 models that returned best metrics - random forest and xgbo
 In the "Model Deployment and Prediction - Local" folder, the handler.py is python app that accepts user input, uses the random forest pickle file and makes the car price prediction. Sample Postman Request to call this app is also given in this folder.
 
 In the "Model Deployment and Prediction - Docker" folder, the Dockerfile contains the instructions to build the car price predictor app image.
-Instructions - docker setup on AWS EC2 Instance.txt - has the step-by-step instrcutions to first host the app in a local container and then, for public use in an AWS ECS container. 
+Instructions - docker setup on AWS EC2 Instance.txt - has the step-by-step instrcutions to first host the app in a local container and then, for public use in an AWS ECS container. Load balancing and suto scaling is also configured for the ECS Service.
 Refer below docker hub URL for the car price predictor image.
 https://hub.docker.com/repository/docker/vinods03/car_price_predictor_app/general
