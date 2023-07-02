@@ -30,6 +30,68 @@ sudo docker rmi <image-name>
 -- Now See the list of images on your machine
 sudo docker images
 
+
+***************** use below commands as well for reference ***********************
+
+In the example shown in the next section, we have not used docker pull ubuntu. we are using docker run directly. 
+Does the add-apt-repository command remove the need for docker pull ?
+Also, note that in the example shown in the next section, the bash keyword at the end of the docuker run command logs us in to the container.
+Instead you could use the docker exec command shown below, in this section.
+
+Step-1: Verify Docker version and also login to Docker Hub
+
+docker version
+docker login
+
+Step-2: Pull Image from Docker Hub
+docker pull stacksimplify/dockerintro-springboot-helloworld-rest-api:1.0.0-RELEASE
+
+Step-3: Run the downloaded Docker Image & Access the Application
+Copy the docker image name from Docker Hub
+docker run --name app1 -p 80:8080 -d stacksimplify/dockerintro-springboot-helloworld-rest-api:1.0.0-RELEASE (local host port 80, container port 8080)
+http://localhost/hello
+
+Step-4: List Running Containers
+docker ps
+docker ps -a
+docker ps -a -q
+
+Step-5: Connect to Container Terminal
+docker exec -it <container-name> /bin/sh
+
+Step-6: Container Stop, Start
+docker stop <container-name>
+docker start  <container-name>
+
+Step-7: Remove Container
+docker stop <container-name> 
+docker rm <container-name>
+
+Step-8: Remove Image
+docker images
+docker rmi  <image-id>
+
+***************** Quick Summary *****************
+
+Commands										Description
+docker ps										List all running containers
+docker ps -a										List all containers stopped, running
+docker stop container-id								Stop the container which is running
+docker start container-id								Start the container which is stopped
+docker restart container-id								Restart the container which is running
+docker port container-id								List port mappings of a specific container
+docker rm container-id or name								Remove the stopped container
+docker rm -f container-id or name							Remove the running container forcefully
+docker pull image-info									Pull the image from docker hub repository
+docker pull stacksimplify/springboot-helloworld-rest-api:2.0.0-RELEASE			Pull the image from docker hub repository
+docker exec -it container-name /bin/sh							Connect to linux container and execute commands in container
+docker rmi image-id									Remove the docker image
+docker logout										Logout from docker hub
+docker login -u username -p password							Login to docker hub
+docker stats										Display a live stream of container(s) resource usage statistics
+docker top container-id or name								Display the running processes of a container
+docker version										Show the Docker version information
+
 =================================== MACHINE LEARNING PROJECT ===================================================
 
 First, we will create a container in our machine (locally) and execute the model app in this container. Next, through docker hub and AWS ECS we will host/run the app for public use.
@@ -52,7 +114,7 @@ sudo apt install curl (install curl)
 
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -  (Add Docker-Ubuntu's repository key to trusted package sources)
 
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable" (add / download ubuntu image from central docker image repository  to VM ??)
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable" (add repository)
 
 sudo apt update
 
@@ -86,11 +148,12 @@ sudo docker images
 -- See the list of containers on your machine
 sudo docker ps -a
 
-sudo docker cp xgb_gridsearch_regressor.pkl d9a356d4878d:xgb_gridsearch_regressor.pkl (d9a356d4878d is the container id from sudo docker ps -a)
+-- copy the files required by your app - handler.py - from your machine (AWS EC2 instance) to the ubuntu container
+sudo docker cp xgb_gridsearch_regressor.pkl a62a778f7474:xgb_gridsearch_regressor.pkl (a62a778f7474 is the container id from sudo docker ps -a)
 
-sudo docker cp random_forest_regressor.pkl d9a356d4878d:random_forest_regressor.pkl
+sudo docker cp random_forest_regressor.pkl a62a778f7474:random_forest_regressor.pkl
 
-sudo docker cp handler.py d9a356d4878d:handler.py
+sudo docker cp handler.py a62a778f7474:handler.py
 
 -------------------------------------------------------------------------
 
@@ -102,7 +165,7 @@ apt-get update (update the packages in the ubuntu container)
 
 apt-get install -y python3-pip (install python in container)
 
-pip3 install scikit-learn (install sklearn in container)
+pip3 install scikit-learn==0.24.0 (install sklearn in container)
 
 pip3 install flask (install flask in container)
 
@@ -110,9 +173,11 @@ pip3 install xgboost (if using xgb model)
 
 python3 handler.py (this is the python code app that uses the model to predict price - this is the endpoint)
 
-So basically, within a ubuntu container we have run our app after installing the pre-requisites for the app.
+Now basically, within a ubuntu container we have run our app after installing the pre-requisites for the app.
 
-base ubuntu + app + pre-requisites for app -> can be bundled together as an image -> which is what we will be doing after verifying the app works as expected locally.
+base ubuntu + app + pre-requisites for app -> can be bundled together as an image -> the steps we followed above to build the container can be listed in a Dockefile ->
+an image is built by the Dockerfile -> this new image can be pushed into docker hub or ECR for public use.
+this is what we will be doing after verifying the app works as expected locally.
 
 --------------------------------------------------------------------------
 
@@ -154,6 +219,13 @@ r = requests.post(url, json = {
 
 print(r.text)
 
+
+url = 'http://0.0.0.0:5000/health_check'
+
+r = requests.get(url)
+
+print(r.text)
+
 --------------------------------------------------------------------------------------------------
 
 So far, we have deployed our machine learning app in a container on our own machine. You can give the localhost-port of the app and get the predictions
@@ -167,7 +239,7 @@ Go to the EC2 connection OUTSIDE the container i.e. on the VM
 
 aws s3 cp s3://vinod-ml-sagemaker-bucket/car_price/Dockerfile .
 
-sudo docker build -t car_price_predictor_app .
+sudo docker build -t new_car_price_predictor_app .
 
 Now, if you run the command sudo docker images, apart from the base ubuntu image which we built and executed sometime ago, the car_price_predictor_app will also be listed.
 
@@ -175,29 +247,86 @@ Next step is to push this image to the docker hub.
 
 sudo docker login (provide username and password)
 
-sudo docker tag car_price_predictor_app vinods03/car_price_predictor_app
+sudo docker tag car_price_predictor_app vinods03/car_price_predictor_app:v3 (Note if you dont use the tag v2, it will be tagged as LATEST)
 
-sudo docker push vinods03/car_price_predictor_app -> this is where the push to ddocker hub happens.
+sudo docker tag new_car_price_predictor_app vinods03/new_car_price_predictor_app
+
+sudo docker push vinods03/car_price_predictor_app:v3 -> this is where the push to docker hub happens.
+
+sudo docker push vinods03/new_car_price_predictor_app -> this is where the push to docker hub happens.
 
 In hub.docker.com -> search for vinods03/car_price_predictor_app and you should find it there.
 
 
 ============== pull the image from docker hub into AWS ECS container so that your app is available on a public IP for public consumption =======================
 
+Go to AWS Console -> ECS
+
 Create a Cluster (provide name, vpc, subnets for the cluster. others can be default)
+The Infrastructure we choose will be AWS Fargate. The options are:
+AWS Fargate (serverless):
+Pay as you go. Use if you have tiny, batch, or burst workloads or for zero maintenance overhead. The cluster has Fargate and Fargate Spot capacity providers by default.
+Amazon EC2 instances
+Manual configurations. Use for large workloads with consistent resource demands.
+External instances using ECS Anywhere
+Manual configurations. Use to add data center compute.
+
+--------
 
 Create a Task definition and associate it with one or more containers - one container for this use case. 
-This container has the docker hub image path (vinods03/car_price_predictor_app).
+This container has the docker hub image path (vinods03/car_price_predictor_app:v2).
 Make sure port 5000 of the container is added in the Port Mappings.
 A port mapping allows a container to access ports on the host to send or receive traffic. 
 For example, for a web application you may want to specify port 80 and the TCP protocol which is commonly used to serve content to HTTP clients such as a web browser.
 We are leaving the App environment as the default value AWS FARGATE (serverless). Other option could be EC2.
+We can provide task size and container size (CPU & memory) here.
+Provide the right roles for Task role and Task execution role.
+You can configure log collection for the task in CloudWatch by providing the log group name etc.
+
+---------
 
 Once the task is created, you can deploy the task as a service on a cluster.
-Provide a name for service and used the compute option -> Launch Type.
+Provide a name for service and used the compute option -> Launch Type -> FARGATE
+Select either managed capacity (Fargate), or custom capacity (EC2 or user-managed, External instances) for launch type.
+External instances are registered to your cluster using the ECS Anywhere capability.
+
+The Service type option determines how the Amazon ECS scheduler places tasks in your cluster. 
+The service scheduler ensures that the scheduling strategy that you specify is followed and reschedules tasks when a task fails.
+
+There are two strategy types:
+Daemon - This is the default strategy. The scheduler places exactly one task on each active container instance that meets all of the task placement constraints specified in your cluster.
+Replica - The scheduler places and maintains the number of tasks that you specify across your cluster. By default the scheduler spreads tasks across Availability Zones.
+The Desired tasks option is the number of tasks to run and only applies when you use the Replica strategy.
+
+Specify / confirm the VPC / subnet where you want your service to run.
+
+You can configure load balancing for your service.
+Create an internet facing ALB on the required VPC / subnets with the required port that will get the requests. 
+Create an approriate target group of Target type Ip and the port the load balancer uses when routing traffic to targets in this target group.
+Configure health check for the target group by specifying the appropriate path as defined in handler.py.
+I used below parameters for health check: Healthy threshold -> 5, Unhealthy threshold -> 4, Timeout -> 120, Interval -> 180
+
+Coming back to the ECS Service creation page, use this load balancer and select the container that you want to load balance. 
+Specify the port and protocol that the load balancer will listen for connection requests on -> this is the same as the port/s specified at the time of creating ALB.
+Choose the target group created during ALB creation.
+Specify the health check path and provide a reasonable health check grace period - a value too small is not advisable because before startup itself, the health check can fail.
+
 Make sure the security group associated with the service allows traffic on the required port (5000 in our case here)
 
-Now, go to the Cluster -> Tasks tab, click on the Task and get the Public IP. That needs to be copied into the url below.
+You can enable Auto Scaling for your ECS Service.
+With 'Scaling Policy Type' -> Target Tracking, we can scale based on one of the 3 metrics ECSServiceAverageCPUUtilization, ECSServiceAverageMemoryUtilization or ALBRequestCountPerTarget.
+With 'Scaling Policy Type' -> Step Scaling, you can use multiple CloudWatch alarms to trigger Scaling.
+I chose Target Tracking -> ALBRequestCountPerTarget -> Target Value 100 -> Scale-out & Scale-in cooldown period as 60 seconds
+To test auto-scaling, you can launch an Amazon Linux AMI instance and perform benchmark testing:
+sudo yum install -y httpd-tools
+ab -n 500000 -c 1000 http://vinod-alb-970084743.us-east-1.elb.amazonaws.com:5000/car_price_predict
+
+You will see that as the load increases, the number of Tasks in your Service increase till the max number of Tasks configured and as the load decreases, the number of tasks will decrease to the desired number of tasks and this happens based on the scale-out and scale-in cooldown period configured.
+
+----------------
+
+At the time of creating a service, if you dont choose to load balance your container, go to the Cluster -> Tasks tab, click on the Task and get the Public IP. 
+That needs to be copied into the url below.
 
 For verifying, you can run below code from within the EC2 connection that is NOT CONNECTED to the docker container i.e. EC2 connection that is connected to VM:
 
@@ -205,7 +334,7 @@ python3 (Go to python prompt and then execute below code)
 
 import requests
 
-url = 'http://3.95.24.86:5000/car_price_predict'
+url = 'http://44.204.178.17:5000/car_price_predict'
 
 r = requests.post(url, json = {
     "symboling": 2,
@@ -239,10 +368,72 @@ print(r.text)
 
 So now your app is available on a public IP. Anyone with access to this IP can access your app.
 
-
 Note: If the security group associated with the service does not allow traffic on port 5000, we will get the connection timeout error when we execute the above request.
 
 Note: When deleting the cluster, first de-register task, then delete service, then delete cluster.
+
+
+===
+
+At the time of creating the Service, if you choose to load balance your container, use the load balancer DNS name after the Service is deployed successfully.
+
+python3 (Go to python prompt and then execute below code)
+
+import requests
+
+url = 'http://vinod-ml-alb-772072634.us-east-1.elb.amazonaws.com:5000/car_price_predict'
+
+r = requests.post(url, json = {
+    "symboling": 2,
+    "normalized-losses": 1640,
+    "wheel-base": 99.8,
+    "make": "audi",
+    "fuel-type": "gas",
+    "aspiration": "std",
+    "num-of-doors": "four",
+    "body-style": "sedan",
+    "drive-wheels": "fwd",
+    "engine-location": "front",
+    "length": 1760.60,
+    "width": 66.20,
+    "height": 54.30,
+    "curb-weight": 2337,
+    "engine-type": "ohc",
+    "num-of-cylinders": "four",
+    "engine-size": 109, 
+    "fuel-system": "mpfi",
+    "bore": 3.19,
+    "stroke": 311.40,
+    "compression-ratio": 10,
+    "horsepower": 102,
+    "peak-rpm": 5500,
+    "city-mpg": 24,
+    "highway-mpg": 300
+})
+
+print(r.text)
+
+
+-------
+
+import requests
+
+url = 'http://vinod-ml-alb-772072634.us-east-1.elb.amazonaws.com:5000/health_check'
+
+r = requests.get(url)
+
+print(r.text)
+
+Note:
+
+When using load balancer, the task under the ECS Service was getting terminated repeatedly.
+To take care of this, i modified handler.py -> created health_checker funtion with app route /health_check and method = GET
+I also modified, the method for the car_price_predict route to POST only instead of GET, POST.
+I then used the /health_check path in the target group creation as part of ALB creation and also at the time of configuring load balancing for the ECS Service.
+
+
+
+
 
 
 
